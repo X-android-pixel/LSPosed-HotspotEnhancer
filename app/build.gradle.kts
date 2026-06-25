@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.github.jules.hotspotenhancer"
-    compileSdk = 36 // Target Android 16
+    compileSdk = 36 // Android 16 (Preview)
 
     defaultConfig {
         applicationId = "com.github.jules.hotspotenhancer"
@@ -17,10 +17,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            // Placeholders for CI/CD signing
+            storeFile = file("release.keystore")
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("KEY_ALIAS")
+            keyPassword = System.getenv("KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            applicationIdSuffix = ".debug"
         }
     }
     compileOptions {
@@ -36,7 +51,10 @@ android {
 }
 
 dependencies {
+    // Xposed API - DO NOT CHANGE TO implementation
     compileOnly("de.robv.android.xposed:api:82")
+
+    // UI and Core components
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
