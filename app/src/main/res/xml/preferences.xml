@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory android:title="Hotspot Configuration">
+        <SeekBarPreference
+            android:defaultValue="10"
+            android:key="max_clients"
+            android:max="32"
+            android:title="@string/pref_max_clients_title"
+            android:summary="@string/pref_max_clients_summary" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="Automation">
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="auto_off_enabled"
+            android:title="@string/pref_auto_off_title"
+            android:summary="@string/pref_auto_off_summary" />
+
+        <ListPreference
+            android:defaultValue="600"
+            android:entries="@array/auto_off_entries"
+            android:entryValues="@array/auto_off_values"
+            android:key="auto_off_timeout"
+            android:title="Timeout Delay"
+            android:dependency="auto_off_enabled" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="Notifications">
+        <SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="notify_connect"
+            android:title="@string/pref_notify_connect_title"
+            android:summary="@string/pref_notify_connect_summary" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

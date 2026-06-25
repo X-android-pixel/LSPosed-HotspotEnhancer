@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">HotspotEnhancer</string>
+    <string name="settings_title">Hotspot Enhancer Settings</string>
+    <string name="pref_max_clients_title">Maximum Clients</string>
+    <string name="pref_max_clients_summary">Set the maximum number of connected devices</string>
+    <string name="pref_auto_off_title">Auto-off Timer</string>
+    <string name="pref_auto_off_summary">Automatically turn off hotspot after inactivity</string>
+    <string name="pref_notify_connect_title">Connection Notification</string>
+    <string name="pref_notify_connect_summary">Notify when a new device connects</string>
+</resources>
