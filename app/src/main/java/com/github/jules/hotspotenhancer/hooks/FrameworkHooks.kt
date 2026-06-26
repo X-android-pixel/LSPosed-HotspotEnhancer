@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
 import de.robv.android.xposed.XC_MethodHook
@@ -18,11 +19,13 @@ import java.lang.reflect.Proxy
 
 object FrameworkHooks {
     private const val TAG = "HotspotEnhancer:Framework"
-    private val prefs = XSharedPreferences("com.github.jules.hotspotenhancer", "hotspot_enhancer_prefs")
+    private val prefs = XSharedPreferences(Prefs.PACKAGE_NAME, Prefs.PREF_NAME)
     private val handler = Handler(Looper.getMainLooper())
     private var autoOffRunnable: Runnable? = null
     private var wifiService: Any? = null
     private var appContext: Context? = null
+
+    const val ACTION_CLIENTS_UPDATED = "com.github.jules.hotspotenhancer.ACTION_CLIENTS_UPDATED"
 
     fun hook(lpparam: LoadPackageParam) {
         try {
@@ -37,34 +40,34 @@ object FrameworkHooks {
         val builderClazz = XposedHelpers.findClass("android.net.wifi.SoftApConfiguration\$Builder", lpparam.classLoader)
 
         XposedHelpers.findAndHookMethod(
-            builderClazz,
-            "setMaxNumberOfClients",
-            Int::class.java,
+            builderClazz, "setMaxNumberOfClients", Int::class.java,
             object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
                     prefs.reload()
                     if (prefs.contains(Prefs.KEY_MAX_CLIENTS)) {
-                        val userMax = prefs.getInt(Prefs.KEY_MAX_CLIENTS, 10)
-                        param.args[0] = userMax
+                        param.args[0] = prefs.getInt(Prefs.KEY_MAX_CLIENTS, 10)
                     }
                 }
             }
         )
 
         XposedHelpers.findAndHookMethod(
-            builderClazz,
-            "build",
+            builderClazz, "build",
             object : XC_MethodHook() {
                 override fun beforeHookedMethod(param: MethodHookParam) {
                     prefs.reload()
-                    val blockedMacs = prefs.getStringSet("blocked_macs", emptySet()) ?: emptySet()
+
+                    // Apply SSID/Password if present in prefs
+                    val ssid = prefs.getString(Prefs.KEY_SSID, null)
+                    val pass = prefs.getString(Prefs.KEY_PASSWORD, null)
+                    if (ssid != null) XposedHelpers.callMethod(param.thisObject, "setSsid", ssid)
+                    if (pass != null) XposedHelpers.callMethod(param.thisObject, "setPassphrase", pass, SoftApConfiguration.SECURITY_TYPE_WPA2_PSK)
+
+                    // Apply Blacklist
+                    val blockedMacs = prefs.getStringSet(Prefs.KEY_BLOCKED_MACS, emptySet()) ?: emptySet()
                     if (blockedMacs.isNotEmpty()) {
-                        try {
-                            val macAddresses = blockedMacs.map { MacAddress.fromString(it) }
-                            XposedHelpers.callMethod(param.thisObject, "setBlockedClientList", macAddresses)
-                        } catch (e: Exception) {
-                            XposedBridge.log("$TAG Failed to set blacklist: ${e.message}")
-                        }
+                        val macAddresses = blockedMacs.map { MacAddress.fromString(it) }
+                        XposedHelpers.callMethod(param.thisObject, "setBlockedClientList", macAddresses)
                     }
                 }
             }
@@ -76,9 +79,7 @@ object FrameworkHooks {
             val wifiServiceClazz = XposedHelpers.findClass("com.android.server.wifi.WifiServiceImpl", lpparam.classLoader)
 
             XposedHelpers.findAndHookMethod(
-                wifiServiceClazz,
-                "registerSoftApCallback",
-                "android.net.wifi.ISoftApCallback",
+                wifiServiceClazz, "registerSoftApCallback", "android.net.wifi.ISoftApCallback",
                 object : XC_MethodHook() {
                     override fun beforeHookedMethod(param: MethodHookParam) {
                         val originalCallback = param.args[0]
@@ -89,23 +90,9 @@ object FrameworkHooks {
 
                         val callbackClazz = XposedHelpers.findClass("android.net.wifi.ISoftApCallback", lpparam.classLoader)
                         param.args[0] = Proxy.newProxyInstance(
-                            lpparam.classLoader,
-                            arrayOf(callbackClazz),
+                            lpparam.classLoader, arrayOf(callbackClazz),
                             SoftApCallbackProxy(originalCallback)
                         )
-                    }
-                }
-            )
-
-            // Hook for Quick Edit logic
-            XposedHelpers.findAndHookMethod(
-                wifiServiceClazz,
-                "setSoftApConfiguration",
-                "android.net.wifi.SoftApConfiguration",
-                "java.lang.String",
-                object : XC_MethodHook() {
-                    override fun beforeHookedMethod(param: MethodHookParam) {
-                        XposedBridge.log("$TAG setSoftApConfiguration called - SSID/Pass might be changing")
                     }
                 }
             )
@@ -120,20 +107,16 @@ object FrameworkHooks {
                 val clients = args?.get(0) as? List<*>
                 clients?.let { onClientsChanged(it) }
             }
-            return try {
-                method.invoke(original, *(args ?: emptyArray()))
-            } catch (e: Exception) {
-                null
-            }
+            return try { method.invoke(original, *(args ?: emptyArray())) } catch (e: Exception) { null }
         }
     }
 
     private fun onClientsChanged(clients: List<*>) {
-        val clientMacs = ArrayList<String>()
+        val clientData = ArrayList<String>()
         for (client in clients) {
             try {
-                val mac = XposedHelpers.callMethod(client, "getMacAddress").toString()
-                clientMacs.add(mac)
+                val mac = XposedHelpers.callMethod(client, "getMacAddress").toString().lowercase()
+                clientData.add(mac)
             } catch (e: Exception) {}
         }
 
@@ -141,17 +124,18 @@ object FrameworkHooks {
             wifiService?.let { startAutoOffTimer(it) }
         } else {
             cancelAutoOffTimer()
-            appContext?.let { context ->
-                val intent = Intent("com.github.jules.hotspotenhancer.ACTION_CLIENT_CONNECTED")
-                intent.putStringArrayListExtra("clients", clientMacs)
-                intent.setPackage("com.github.jules.hotspotenhancer")
-                context.sendBroadcast(intent)
+        }
 
-                // Also notify SystemUI
-                val sysUiIntent = Intent("com.github.jules.hotspotenhancer.ACTION_CLIENT_CONNECTED")
-                sysUiIntent.setPackage("com.android.systemui")
-                context.sendBroadcast(sysUiIntent)
-            }
+        appContext?.let { context ->
+            val intent = Intent(ACTION_CLIENTS_UPDATED)
+            intent.putStringArrayListExtra("clients", clientData)
+            intent.setPackage(Prefs.PACKAGE_NAME)
+            context.sendBroadcast(intent)
+
+            // Notification intent
+            val sysUiIntent = Intent("com.github.jules.hotspotenhancer.ACTION_NOTIFY_CONNECT")
+            sysUiIntent.setPackage("com.android.systemui")
+            context.sendBroadcast(sysUiIntent)
         }
     }
 
@@ -163,11 +147,7 @@ object FrameworkHooks {
 
         cancelAutoOffTimer()
         autoOffRunnable = Runnable {
-            try {
-                XposedHelpers.callMethod(service, "stopSoftAp", 0)
-            } catch (e: Exception) {
-                XposedBridge.log("$TAG Auto-off failed: ${e.message}")
-            }
+            try { XposedHelpers.callMethod(service, "stopSoftAp", 0) } catch (e: Exception) {}
         }
         handler.postDelayed(autoOffRunnable!!, timeout * 1000)
     }

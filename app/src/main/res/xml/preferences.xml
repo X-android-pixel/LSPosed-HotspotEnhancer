@@ -2,6 +2,14 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <PreferenceCategory
+        android:key="connected_clients_category"
+        android:title="Connected Devices">
+        <Preference
+            android:summary="No devices connected"
+            android:title="Loading..." />
+    </PreferenceCategory>
+
     <PreferenceCategory android:title="Hotspot Configuration">
         <SeekBarPreference
             android:defaultValue="10"
@@ -9,6 +17,16 @@
             android:max="32"
             android:title="@string/pref_max_clients_title"
             android:summary="@string/pref_max_clients_summary" />
+
+        <EditTextPreference
+            android:key="hotspot_ssid"
+            android:title="SSID"
+            android:summary="Change Hotspot name" />
+
+        <EditTextPreference
+            android:key="hotspot_password"
+            android:title="Password"
+            android:summary="Change Hotspot password" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="Automation">
@@ -27,12 +45,11 @@
             android:dependency="auto_off_enabled" />
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="Notifications">
-        <SwitchPreferenceCompat
-            android:defaultValue="true"
-            android:key="notify_connect"
-            android:title="@string/pref_notify_connect_title"
-            android:summary="@string/pref_notify_connect_summary" />
+    <PreferenceCategory android:title="Blocking">
+        <Preference
+            android:key="manage_blacklist"
+            android:title="Manage Blacklist"
+            android:summary="Block specific MAC addresses" />
     </PreferenceCategory>
 
 </PreferenceScreen>
